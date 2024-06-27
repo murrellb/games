@@ -365,6 +365,7 @@ function update(deltaTime) {
     tailLength = snake.segments.length;
 
     snake.segments.unshift({ x: snake.x, y: snake.y, color: `hsl(${Date.now() * 0.1 % 360}, 100%, 50%)` });
+
     if (snake.segments.length > snake.maxSegments) {
         snake.segments.pop();
     }
@@ -388,17 +389,20 @@ function update(deltaTime) {
         let currentSpeed = Math.sqrt(asteroid.vx * asteroid.vx + asteroid.vy * asteroid.vy);
         if (currentSpeed > MINMAX_SPEED) {
             let decayFactor = Math.pow(Math.max(SPEED_DECAY_RATE, MINMAX_SPEED / currentSpeed), deltaTime);
-            asteroid.vx *= decayFacto            asteroid.vy *= decayFactor;
+            asteroid.vx *= decayFactor;
+            asteroid.vy *= decayFactor;
         }
 
         asteroid.x += asteroid.vx * deltaTime * 60 * gameSpeedMultiplier;
         asteroid.y += asteroid.vy * deltaTime * 60 * gameSpeedMultiplier;
 
-        ast        asteroid.y = (asteroid.y + canvas.height) % canvas.height;
+        asteroid.x = (asteroid.x + canvas.width) % canvas.width;
+        asteroid.y = (asteroid.y + canvas.height) % canvas.height;
 
         totalVelocity += Math.sqrt(asteroid.vx * asteroid.vx + asteroid.vy * asteroid.vy);
 
-        if (!isEnteringBlackHole             endGame('Game Over! You crashed into an asteroid!');
+        if (!isEnteringBlackHole && distance(snake, asteroid) < snake.radius + asteroid.radius) {
+            endGame('Game Over! You crashed into an asteroid!');
             return;
         }
 
