@@ -364,7 +364,7 @@ function update(deltaTime) {
 
     tailLength = snake.segments.length;
 
-    snake.segments.unshift({ x: snake.x, y: snake.y
+    snake.segments.unshift({ x: snake.x, y: snake.y, color: `hsl(${Date.now() * 0.1 % 360}, 100%, 50%)` });
     if (snake.segments.length > snake.maxSegments) {
         snake.segments.pop();
     }
