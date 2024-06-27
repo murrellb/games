@@ -104,7 +104,7 @@ const BLACK_HOLE_RADIUS = 30;
 const BLACK_HOLE_SPAWN_THRESHOLD = 0.8;
 const BLACK_HOLE_MOVE_SPEED = 0.5;
 const BLACK_HOLE_PULL_RATE = 5.0;
-const ACCELEROMETER_MULTIPLIER = 5;
+const ACCELEROMETER_MULTIPLIER = -5;
 
 // Game state variables
 let snake, asteroids, foodAsteroids, gameLoopId, stars;
@@ -168,7 +168,7 @@ function handleOrientation(event) {
 
 function handleMotion(event) {
     if (useAccelerometer) {
-        accelerometerY = event.accelerationIncludingGravity.y * ACCELEROMETER_MULTIPLIER;
+        accelerometerY = event.accelerationIncludingGravity.x * ACCELEROMETER_MULTIPLIER;
     }
 }
 
