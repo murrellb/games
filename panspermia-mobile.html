@@ -856,28 +856,12 @@ class BackgroundMusic {
 
 // Initialize the game when the window loads
 window.onload = function() {
-    // Set up the canvas
-    canvas = document.getElementById('gameCanvas');
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    ctx = canvas.getContext('2d');
-
-    // Initialize game components
-    updateSliderValues();
-    
-    // Add event listener for the start button
-    document.getElementById('startGame').addEventListener('click', startGame);
-
-    // Add event listener for window resize
-    window.addEventListener('resize', handleResize);
-
-    // Set up device orientation and motion detection
-    if (window.DeviceMotionEvent) {
-        window.addEventListener('devicemotion', handleMotion);
-    }
-
-    if (DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === "function") {
-        DeviceOrientationEvent.requestPermission()
+    // Request permission for iOS 13+ devices
+    if (
+        DeviceMotionEvent &&
+        typeof DeviceMotionEvent.requestPermission === "function"
+    ) {
+        DeviceMotionEvent.requestPermission()
             .then(permissionState => {
                 if (permissionState === 'granted') {
                     window.addEventListener('deviceorientation', handleOrientation);
@@ -886,18 +870,25 @@ window.onload = function() {
             })
             .catch(console.error);
     } else {
+        // Handle regular non iOS 13+ devices
         window.addEventListener('deviceorientation', handleOrientation);
         window.addEventListener('devicemotion', handleMotion);
     }
 
+    // Set up the game
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    ctx = canvas.getContext('2d');
+
+    // Initialize game components
+    updateSliderValues();
+    
+    // Add event listener for window resize
+    window.addEventListener('resize', handleResize);
+
     // Add touch events for mobile interaction
     canvas.addEventListener('touchstart', handleTouchStart, false);
     canvas.addEventListener('touchmove', handleTouchMove, false);
-
-    // Prevent unwanted scrolling on mobile devices
-    document.body.addEventListener('touchmove', function(e) {
-        e.preventDefault();
-    }, { passive: false });
 
     // Add event listeners to start audio context
     document.addEventListener('touchstart', startAudioContext);
