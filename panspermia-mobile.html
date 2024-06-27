@@ -855,6 +855,7 @@ class BackgroundMusic {
 
 
 // Initialize the game when the window loads
+// Initialize the game when the window loads
 window.onload = function() {
     // Request permission for iOS 13+ devices
     if (
@@ -878,7 +879,7 @@ window.onload = function() {
     // Set up the game
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    ctx = canvas.getContext('2d');
+    // Remove the line that was reassigning ctx
 
     // Initialize game components
     updateSliderValues();
