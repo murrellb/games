@@ -375,7 +375,8 @@ function update(deltaTime) {
         for (let i = 1; i < snake.segments.length; i++) {
             cumulativeDistance += distance(snake.segments[i - 1], snake.segments[i]);
             if (cumulativeDistance > safeDistance && distance(snake, snake.segments[i]) < snake.radius) {
-                endGame('Game Over! You crashed into your own tai                return;
+                endGame('Game Over! You crashed into your own tail!');
+                return;
             }
         }
     }
