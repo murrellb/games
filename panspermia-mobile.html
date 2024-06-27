@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0", maximum-scale=1.0, user-scalable=no">
     <title>Panspermia - Mobile</title>
     <style>
         body {
@@ -157,6 +157,19 @@ function handleOrientation(event) {
 
 // Initialization functions
 function startGame() {
+
+    // Request device orientation permission explicitly
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+            .then(permissionState => {
+                if (permissionState === 'granted') {
+                    window.addEventListener('deviceorientation', handleOrientation);
+                }
+            })
+            .catch(console.error);
+    }
+
+    
     menu.style.display = 'none';
     canvas.style.display = 'block';
     canvas.width = window.innerWidth;
