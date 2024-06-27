@@ -154,9 +154,6 @@ tailGrowthRateSlider.oninput = updateSliderValues;
 // Accelerometer event listener
 window.addEventListener('deviceorientation', handleOrientation);
 
-function handleOrientation(event) {
-    orientationY = event.gamma; // Y-axis rotation
-}
 
 function handleOrientation(event) {
     if (event.gamma !== null && event.gamma !== 0) {
