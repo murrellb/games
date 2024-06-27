@@ -99,6 +99,7 @@ const BLACK_HOLE_RADIUS = 30;
 const BLACK_HOLE_SPAWN_THRESHOLD = 0.8;
 const BLACK_HOLE_MOVE_SPEED = 0.5;
 const BLACK_HOLE_PULL_RATE = 5.0;
+const ACCELEROMETER_MULTIPLIER = 5;
 
 // Game state variables
 let snake, asteroids, foodAsteroids, gameLoopId, stars;
@@ -117,6 +118,8 @@ let accumulator = 0;
 // Accelerometer variables
 let orientationY = 0;
 let accelerometerMultiplier = 1;
+let useAccelerometer = false;
+let accelerometerY = 0;
 
 // Audio context and nodes
 let audioContext;
@@ -153,6 +156,21 @@ window.addEventListener('deviceorientation', handleOrientation);
 
 function handleOrientation(event) {
     orientationY = event.gamma; // Y-axis rotation
+}
+
+function handleOrientation(event) {
+    if (event.gamma !== null && event.gamma !== 0) {
+        orientationY = event.gamma;
+        useAccelerometer = false;
+    } else {
+        useAccelerometer = true;
+    }
+}
+
+function handleMotion(event) {
+    if (useAccelerometer) {
+        accelerometerY = event.accelerationIncludingGravity.y * ACCELEROMETER_MULTIPLIER;
+    }
 }
 
 // Initialization functions
@@ -307,8 +325,12 @@ function update(deltaTime) {
 
     const gameSpeedMultiplier = 3.5; // Increase this to speed up the game overall
 
-    // Update snake angle based on accelerometer data
-    snake.angle += (orientationY * Math.PI / 180) * accelerometerMultiplier * deltaTime;
+    // Update snake angle based on sensor data
+    if (useAccelerometer) {
+        snake.angle += (accelerometerY / 180 * Math.PI) * accelerometerMultiplier * deltaTime;
+    } else {
+        snake.angle += (orientationY * Math.PI / 180) * accelerometerMultiplier * deltaTime;
+    }
 
     // Check if we need to spawn a black hole
     if (!blackHole && averageAsteroidVelocity > BLACK_HOLE_SPAWN_THRESHOLD) {
@@ -342,8 +364,7 @@ function update(deltaTime) {
 
     tailLength = snake.segments.length;
 
-    snake.segments.unshift({ x: snake.x, y: snake.y, color: `hsl(${Date.now() * 0.1 % 360}, 100%, 50%)` });
-
+    snake.segments.unshift({ x: snake.x, y: snake.y
     if (snake.segments.length > snake.maxSegments) {
         snake.segments.pop();
     }
@@ -354,8 +375,7 @@ function update(deltaTime) {
         for (let i = 1; i < snake.segments.length; i++) {
             cumulativeDistance += distance(snake.segments[i - 1], snake.segments[i]);
             if (cumulativeDistance > safeDistance && distance(snake, snake.segments[i]) < snake.radius) {
-                endGame('Game Over! You crashed into your own tail!');
-                return;
+                endGame('Game Over! You crashed into your own tai                return;
             }
         }
     }
@@ -367,20 +387,17 @@ function update(deltaTime) {
         let currentSpeed = Math.sqrt(asteroid.vx * asteroid.vx + asteroid.vy * asteroid.vy);
         if (currentSpeed > MINMAX_SPEED) {
             let decayFactor = Math.pow(Math.max(SPEED_DECAY_RATE, MINMAX_SPEED / currentSpeed), deltaTime);
-            asteroid.vx *= decayFactor;
-            asteroid.vy *= decayFactor;
+            asteroid.vx *= decayFacto            asteroid.vy *= decayFactor;
         }
 
         asteroid.x += asteroid.vx * deltaTime * 60 * gameSpeedMultiplier;
         asteroid.y += asteroid.vy * deltaTime * 60 * gameSpeedMultiplier;
 
-        asteroid.x = (asteroid.x + canvas.width) % canvas.width;
-        asteroid.y = (asteroid.y + canvas.height) % canvas.height;
+        ast        asteroid.y = (asteroid.y + canvas.height) % canvas.height;
 
         totalVelocity += Math.sqrt(asteroid.vx * asteroid.vx + asteroid.vy * asteroid.vy);
 
-        if (!isEnteringBlackHole && distance(snake, asteroid) < snake.radius + asteroid.radius) {
-            endGame('Game Over! You crashed into an asteroid!');
+        if (!isEnteringBlackHole             endGame('Game Over! You crashed into an asteroid!');
             return;
         }
 
@@ -834,24 +851,8 @@ class BackgroundMusic {
 
 // Initialize the game when the window loads
 window.onload = function() {
-    // Request permission for iOS 13+ devices
-    if (
-        DeviceMotionEvent &&
-        typeof DeviceMotionEvent.requestPermission === "function"
-    ) {
-        DeviceMotionEvent.requestPermission()
-            .then(permissionState => {
-                if (permissionState === 'granted') {
-                    window.addEventListener('deviceorientation', handleOrientation);
-                }
-            })
-            .catch(console.error);
-    } else {
-        // Handle regular non iOS 13+ devices
-        window.addEventListener('deviceorientation', handleOrientation);
-    }
-
-    // Set up the game
+    // Set up the canvas
+    canvas = document.getElementById('gameCanvas');
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
     ctx = canvas.getContext('2d');
@@ -859,12 +860,39 @@ window.onload = function() {
     // Initialize game components
     updateSliderValues();
     
+    // Add event listener for the start button
+    document.getElementById('startGame').addEventListener('click', startGame);
+
     // Add event listener for window resize
     window.addEventListener('resize', handleResize);
+
+    // Set up device orientation and motion detection
+    if (window.DeviceMotionEvent) {
+        window.addEventListener('devicemotion', handleMotion);
+    }
+
+    if (DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === "function") {
+        DeviceOrientationEvent.requestPermission()
+            .then(permissionState => {
+                if (permissionState === 'granted') {
+                    window.addEventListener('deviceorientation', handleOrientation);
+                    window.addEventListener('devicemotion', handleMotion);
+                }
+            })
+            .catch(console.error);
+    } else {
+        window.addEventListener('deviceorientation', handleOrientation);
+        window.addEventListener('devicemotion', handleMotion);
+    }
 
     // Add touch events for mobile interaction
     canvas.addEventListener('touchstart', handleTouchStart, false);
     canvas.addEventListener('touchmove', handleTouchMove, false);
+
+    // Prevent unwanted scrolling on mobile devices
+    document.body.addEventListener('touchmove', function(e) {
+        e.preventDefault();
+    }, { passive: false });
 
     // Add event listeners to start audio context
     document.addEventListener('touchstart', startAudioContext);
