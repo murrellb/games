@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tin Dome</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+        }
+
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        class BackgroundMusic {
+            constructor(audioContext) {
+                this.audioContext = audioContext;
+                this.isPlaying = false;
+                this.tempo = 180;
+                this.noteLength = 60 / this.tempo;
+                this.scale = [220.00, 246.94, 261.63, 293.66, 329.63, 349.23, 392.00];
+            }
+
+            start() {
+                if (this.isPlaying) return;
+                this.isPlaying = true;
+                this.nextNoteTime = this.audioContext.currentTime;
+                this.scheduleNote();
+            }
+
+            stop() {
+                this.isPlaying = false;
+                if (this.timeout) {
+                    clearTimeout(this.timeout);
+                }
+            }
+
+            scheduleNote() {
+                if (Math.random() < 0.7) {
+                    const note = this.scale[Math.floor(Math.random() * this.scale.length)];
+                    this.playTone(note, this.nextNoteTime, this.noteLength);
+                }
+
+                if (Math.random() < 0.4) {
+                    this.playDrumSound(this.nextNoteTime, Math.random() < 0.5 ? 'kick' : 'snare');
+                }
+
+                this.nextNoteTime += this.noteLength;
+                if (this.isPlaying) {
+                    this.timeout = setTimeout(() => this.scheduleNote(), (this.nextNoteTime - this.audioContext.currentTime) * 1000);
+                }
+            }
+
+            playDrumSound(time, type) {
+                const osc = this.audioContext.createOscillator();
+                const gain = this.audioContext.createGain();
+                osc.connect(gain);
+                gain.connect(this.audioContext.destination);
+
+                if (type === 'kick') {
+                    osc.frequency.setValueAtTime(100, time);
+                    osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.3);
+                    gain.gain.setValueAtTime(1, time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+                } else if (type === 'snare') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(150, time);
+                    gain.gain.setValueAtTime(0.5, time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+                }
+
+                osc.start(time);
+                osc.stop(time + 0.3);
+            }
+
+            playTone(frequency, startTime, duration) {
+                const osc = this.audioContext.createOscillator();
+                const gain = this.audioContext.createGain();
+                osc.connect(gain);
+                gain.connect(this.audioContext.destination);
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(frequency, startTime);
+
+                gain.gain.setValueAtTime(0.1, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration - 0.05);
+
+                osc.start(startTime);
+                osc.stop(startTime + duration);
+            }
+        }
+
+        const backgroundMusic = new BackgroundMusic(audioContext);
+
+        function startBackgroundMusic() {
+            backgroundMusic.start();
+        }
+
+        function playShootSound() {
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(440, audioContext.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(880, audioContext.currentTime + 0.1);
+
+            gain.gain.setValueAtTime(0.5, audioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+
+            osc.start();
+            osc.stop(audioContext.currentTime + 0.1);
+        }
+
+        function playExplosionSound() {
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(100, audioContext.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(50, audioContext.currentTime + 0.3);
+
+            gain.gain.setValueAtTime(1, audioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+            osc.start();
+            osc.stop(audioContext.currentTime + 0.3);
+        }
+
+        function playImpactSound() {
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(220, audioContext.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(55, audioContext.currentTime + 0.1);
+
+            gain.gain.setValueAtTime(0.5, audioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+
+            osc.start();
+            osc.stop(audioContext.currentTime + 0.1);
+        }
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game constants
+        let CASTLE_WIDTH, CASTLE_HEIGHT, CANNON_SIZE;
+        const PROJECTILE_TYPES = [
+            { name: 'Small', speed: 20, radius: 20, color: '#ff0000', particles: 10 },
+            { name: 'Medium', speed: 20, radius: 35, color: '#00ff00', particles: 15 },
+            { name: 'Large', speed: 20, radius: 50, color: '#0000ff', particles: 20 }
+        ];
+        const FALLING_OBJECT_TYPES = [
+            { name: 'Rock', speed: 3, blastRadius: 40, color: '#808080', shape: 'missile' },
+            { name: 'Bomb', speed: 4, blastRadius: 60, color: '#000000', shape: 'missile' }
+        ];
+
+        // Game state
+        let castle = [], fallingObjects = [], projectiles = [], explosions = [], projectileQueue = [];
+        let score = 0, cannonAngle = 0;
+        let nextProjectile = null;
+        let gameOver = false;
+
+        function initGame() {
+            resetGame();
+            canvas.addEventListener('touchstart', handleTouch);
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+            audioContext.resume().then(() => {
+                startBackgroundMusic();
+            });
+        }
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            CASTLE_WIDTH = canvas.width * 0.5;
+            CASTLE_HEIGHT = canvas.height * 0.25;
+            CANNON_SIZE = Math.min(canvas.width, canvas.height) * 0.05;
+            generateCastle();
+        }
+
+        function showPlayButton() {
+            const playButton = document.createElement('button');
+            playButton.textContent = 'Play Again';
+            playButton.style.position = 'absolute';
+            playButton.style.left = '50%';
+            playButton.style.top = '60%';
+            playButton.style.transform = 'translate(-50%, -50%)';
+            playButton.style.padding = '10px 20px';
+            playButton.style.fontSize = '24px';
+            playButton.style.cursor = 'pointer';
+            playButton.style.backgroundColor = '#4CAF50';
+            playButton.style.color = 'white';
+            playButton.style.border = 'none';
+            playButton.style.borderRadius = '5px';
+            playButton.style.zIndex = '1000';
+
+            playButton.ontouchstart = (e) => {
+                e.preventDefault();
+                document.body.removeChild(playButton);
+                resetGame();
+            };
+
+            document.body.appendChild(playButton);
+        }
+
+        function resetGame() {
+            castle = [];
+            fallingObjects = [];
+            projectiles = [];
+            explosions = [];
+            nextProjectile = null;
+            score = 0;
+            cannonAngle = 0;
+            gameOver = false;
+
+            generateCastle();
+            startBackgroundMusic();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function generateCastle() {
+            const blockSize = Math.min(CASTLE_WIDTH, CASTLE_HEIGHT) * 0.06;
+            const startX = (canvas.width - CASTLE_WIDTH) / 2;
+            const startY = canvas.height - CASTLE_HEIGHT;
+            for (let y = 0; y < CASTLE_HEIGHT; y += blockSize) {
+                for (let x = 0; x < CASTLE_WIDTH; x += blockSize) {
+                    if (Math.random() > 0.3 && isWithinCastleShape(x, y)) {
+                        castle.push({
+                            x: startX + x, y: startY + y,
+                            width: blockSize, height: blockSize,
+                            color: `hsl(${Math.random() * 60 + 180}, 50%, 50%)`
+                        });
+                    }
+                }
+            }
+        }
+
+        function isWithinCastleShape(x, y) {
+            const centerX = CASTLE_WIDTH / 2, centerY = CASTLE_HEIGHT / 2;
+            const distanceFromCenter = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+            return distanceFromCenter < CASTLE_WIDTH / 3 || y > CASTLE_HEIGHT * 0.6;
+        }
+
+        function handleTouch(event) {
+            event.preventDefault();
+            if (gameOver) return;
+            const touch = event.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            if (nextProjectile) {
+                launchProjectile(nextProjectile, x, y);
+                playShootSound();
+                nextProjectile = PROJECTILE_TYPES[Math.floor(Math.random() * PROJECTILE_TYPES.length)];
+            }
+        }
+
+        //DIVIDER
+
+        function launchProjectile(type, targetX, targetY) {
+            const startX = canvas.width - CANNON_SIZE / 2;
+            const startY = canvas.height - CANNON_SIZE / 2;
+            const dx = targetX - startX;
+            const dy = targetY - startY;
+            cannonAngle = Math.atan2(dy, dx);
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const time = distance / type.speed;
+            const gravity = 0.5;
+            const vx = (dx / time);
+            const vy = (dy / time) - (0.5 * gravity * time);
+            projectiles.push({
+                x: startX, y: startY, vx, vy,
+                targetX, targetY,
+                initialX: startX, initialY: startY,
+                ...type
+            });
+        }
+
+        function hasPassedTarget(projectile) {
+            const dx = projectile.x - projectile.initialX;
+            const dy = projectile.y - projectile.initialY;
+            const targetDx = projectile.targetX - projectile.initialX;
+            const targetDy = projectile.targetY - projectile.initialY;
+
+            const passedX = (dx > 0 && dx > targetDx) || (dx < 0 && dx < targetDx);
+            const passedY = (dy > 0 && dy > targetDy) || (dy < 0 && dy < targetDy);
+
+            return passedX && passedY;
+        }
+
+        function createFallingObject() {
+            const type = FALLING_OBJECT_TYPES[Math.floor(Math.random() * FALLING_OBJECT_TYPES.length)];
+            const angle = Math.random() * Math.PI / 4 - Math.PI / 8;
+            const speed = type.speed * (canvas.height / 800); // Adjust speed based on screen height
+            fallingObjects.push({
+                x: Math.random() * canvas.width, y: 0,
+                vx: Math.sin(angle) * speed,
+                vy: Math.cos(angle) * speed,
+                length: Math.random() * (canvas.height * 0.0375) + (canvas.height * 0.025), // Adjust length based on screen height
+                width: canvas.width * 0.0125, // Adjust width based on screen width
+                angle: Math.atan2(Math.cos(angle) * speed, Math.sin(angle) * speed),
+                ...type
+            });
+        }
+
+        function updateProjectiles() {
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.5; // Gravity effect
+
+                if (hasPassedTarget(p) || p.y > canvas.height || p.x < 0 || p.x > canvas.width) {
+                    explodeProjectile(p);
+                    projectiles.splice(i, 1);
+                }
+            }
+        }
+
+        function explodeProjectile(projectile) {
+            explosions.push({
+                x: projectile.x,
+                y: projectile.y,
+                radius: projectile.radius * 2,
+                color: projectile.color,
+                particles: createExplosionParticles(projectile),
+                lifetime: 30
+            });
+            playExplosionSound();
+            for (let i = fallingObjects.length - 1; i >= 0; i--) {
+                const obj = fallingObjects[i];
+                if (Math.hypot(projectile.x - obj.x, projectile.y - obj.y) < (projectile.radius * 2) + obj.length / 2) {
+                    fallingObjects.splice(i, 1);
+                    score += 10;
+                }
+            }
+        }
+
+        function explodeFallingObject(obj) {
+            explosions.push({
+                x: obj.x, y: obj.y,
+                radius: obj.blastRadius, color: obj.color,
+                particles: createExplosionParticles(obj),
+                lifetime: 30
+            });
+            playImpactSound();
+            for (let i = castle.length - 1; i >= 0; i--) {
+                const block = castle[i];
+                if (Math.hypot(obj.x - (block.x + block.width / 2), obj.y - (block.y + block.height / 2)) < obj.blastRadius) {
+                    castle.splice(i, 1);
+                }
+            }
+        }
+
+        function createExplosionParticles(object) {
+            const particleCount = object.particles ? object.particles * 3 : 30;
+            const explosionRadius = object.radius ? object.radius * 2 : 30;
+            return Array(particleCount).fill().map(() => {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 5 + 2;
+                return {
+                    x: object.x,
+                    y: object.y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    radius: Math.random() * 3 + 1,
+                    color: getRandomColor(object.color),
+                    lifetime: Math.random() * 60 + 30
+                };
+            });
+        }
+
+        function getRandomColor(baseColor) {
+            const r = parseInt(baseColor.slice(1, 3), 16);
+            const g = parseInt(baseColor.slice(3, 5), 16);
+            const b = parseInt(baseColor.slice(5, 7), 16);
+
+            const variation = 50;
+            const newR = Math.min(255, Math.max(0, r + Math.random() * variation - variation / 2));
+            const newG = Math.min(255, Math.max(0, g + Math.random() * variation - variation / 2));
+            const newB = Math.min(255, Math.max(0, b + Math.random() * variation - variation / 2));
+
+            return `rgb(${Math.round(newR)}, ${Math.round(newG)}, ${Math.round(newB)})`;
+        }
+
+        function updateFallingObjects() {
+            for (let i = fallingObjects.length - 1; i >= 0; i--) {
+                const obj = fallingObjects[i];
+                obj.x += obj.vx;
+                obj.y += obj.vy;
+                if (obj.y > canvas.height) {
+                    explodeFallingObject(obj);
+                    fallingObjects.splice(i, 1);
+                    continue;
+                }
+                for (let j = castle.length - 1; j >= 0; j--) {
+                    const block = castle[j];
+                    if (obj.x > block.x && obj.x < block.x + block.width &&
+                        obj.y > block.y && obj.y < block.y + block.height) {
+                        explodeFallingObject(obj);
+                        fallingObjects.splice(i, 1);
+                        break;
+                    }
+                }
+            }
+            if (Math.random() < 0.02) createFallingObject();
+        }
+
+        function updateExplosions() {
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                const explosion = explosions[i];
+                explosion.lifetime--;
+                explosion.particles = explosion.particles.filter(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += 0.1;
+                    p.lifetime--;
+                    return p.lifetime > 0;
+                });
+                if (explosion.lifetime <= 0) explosions.splice(i, 1);
+            }
+        }
+
+        function drawMissile(obj) {
+            ctx.save();
+            ctx.translate(obj.x, obj.y);
+            ctx.rotate(obj.angle + Math.PI / 2);
+            ctx.fillStyle = obj.color;
+            ctx.beginPath();
+            ctx.moveTo(0, -obj.length / 2);
+            ctx.lineTo(obj.width / 2, obj.length / 2);
+            ctx.lineTo(-obj.width / 2, obj.length / 2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function draw() {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            castle.forEach(block => {
+                ctx.fillStyle = block.color;
+                ctx.fillRect(block.x, block.y, block.width, block.height);
+            });
+
+            ctx.save();
+            ctx.translate(canvas.width - CANNON_SIZE / 2, canvas.height - CANNON_SIZE / 2);
+            ctx.rotate(cannonAngle);
+            ctx.fillStyle = '#ff00ff';
+            ctx.fillRect(-CANNON_SIZE / 2, -CANNON_SIZE / 2, CANNON_SIZE, CANNON_SIZE / 2);
+            ctx.fillStyle = '#8B008B';
+            ctx.fillRect(0, -CANNON_SIZE / 8, CANNON_SIZE, CANNON_SIZE / 4);
+            ctx.beginPath();
+            ctx.arc(0, 0, CANNON_SIZE / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            projectiles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            fallingObjects.forEach(drawMissile);
+
+            explosions.forEach(explosion => {
+                explosion.particles.forEach(particle => {
+                    ctx.globalAlpha = particle.lifetime / 90;
+                    ctx.fillStyle = particle.color;
+                    ctx.beginPath();
+                    ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            });
+            ctx.globalAlpha = 1;
+
+            if (nextProjectile) {
+                ctx.fillStyle = nextProjectile.color;
+                ctx.beginPath();
+                ctx.arc(canvas.width - CANNON_SIZE * 2, canvas.height - CANNON_SIZE / 2, 10, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.fillStyle = '#000000';
+            ctx.font = `${Math.max(16, canvas.width * 0.03)}px Arial`;
+            ctx.fillText(`Score: ${score}`, 10, 30);
+
+            if (gameOver) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = `${Math.max(32, canvas.width * 0.05)}px Arial`;
+                ctx.fillText('Game Over!', canvas.width / 2 - 100, canvas.height / 2 - 50);
+                ctx.fillText(`Final Score: ${score}`, canvas.width / 2 - 100, canvas.height / 2);
+            }
+        }
+
+        function gameLoop() {
+            try {
+                if (!gameOver) {
+                    updateProjectiles();
+                    updateFallingObjects();
+                    updateExplosions();
+
+                    if (!nextProjectile) {
+                        nextProjectile = PROJECTILE_TYPES[Math.floor(Math.random() * PROJECTILE_TYPES.length)];
+                    }
+
+                    if (castle.length === 0) {
+                        gameOver = true;
+                        backgroundMusic.stop();
+                        showPlayButton();
+                    }
+                }
+
+                draw();
+
+                if (!gameOver) {
+                    requestAnimationFrame(gameLoop);
+                }
+            } catch (error) {
+                console.error("An error occurred in the game loop:", error);
+            }
+        }
+
+        initGame();
+    </script>
+</body>
+
+</html>
