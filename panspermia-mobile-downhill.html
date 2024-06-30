@@ -170,7 +170,7 @@ function calculateDownhillAngle(beta, gamma) {
     const gammaRad = gamma * Math.PI / 180;
     
     // Calculate the downhill angle
-    return Math.atan2(-Math.sin(betaRad), Math.sin(gammaRad));
+    return Math.atan2(Math.sin(betaRad), Math.sin(gammaRad));
 }
 
 console.log(calculateDownhillAngle(-20.0, 30.0))
