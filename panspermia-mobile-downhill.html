@@ -190,6 +190,7 @@ function updateSnakeOrientation() {
         const downhillAngle = calculateDownhillAngle(orientationData.beta, orientationData.gamma);
         const steepness = Math.sqrt(Math.pow(Math.tan(orientationData.beta * Math.PI / 180), 2) + 
                                     Math.pow(Math.tan(orientationData.gamma * Math.PI / 180), 2));
+        steepness = 10;
         snake.targetAngle = downhillAngle;
         snake.rotationSpeed = Math.min(steepness * 0.1, 0.1) * accelerometerMultiplier; // Adjust sensitivity
     }
