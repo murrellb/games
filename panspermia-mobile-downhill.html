@@ -686,12 +686,12 @@ function draw() {
     //BM Debug
     ctx.fillText(`Tail Length: ${tailLength}`, 10, 20);
     ctx.fillText(`Avg Asteroid Velocity: ${averageAsteroidVelocity.toFixed(2)}`, 10, 40);
-    ctx.fillText(`snake.targetAngle: ${snake.targetAngle}`, 10, 60);
-    ctx.fillText(`snake.angle: ${snake.angle.toFixed(2)}`, 10, 80);
-    ctx.fillText(`snake.rotationSpeed: ${snake.rotationSpeed.toFixed(2)}`, 10, 100);
-    ctx.fillText(`orientationBeta: ${orientationBeta.toFixed(2)}`, 10, 120);
-    ctx.fillText(`orientationGamma: ${orientationGamma.toFixed(2)}`, 10, 140);
-    ctx.fillText(`snake.x: ${snake.x.toFixed(2)}`, 10, 160);
+    //ctx.fillText(`snake.targetAngle: ${snake.targetAngle}`, 10, 60);
+    //ctx.fillText(`snake.angle: ${snake.angle.toFixed(2)}`, 10, 80);
+    //ctx.fillText(`snake.rotationSpeed: ${snake.rotationSpeed.toFixed(2)}`, 10, 100);
+    //ctx.fillText(`orientationBeta: ${orientationBeta.toFixed(2)}`, 10, 120);
+    //ctx.fillText(`orientationGamma: ${orientationGamma.toFixed(2)}`, 10, 140);
+    //ctx.fillText(`snake.x: ${snake.x.toFixed(2)}`, 10, 160);
 
 }
 
@@ -904,8 +904,8 @@ window.onload = function() {
         updateSliderValues();
         
         window.addEventListener('resize', handleResize);
-        canvas.addEventListener('touchstart', handleTouchStart, false);
-        canvas.addEventListener('touchmove', handleTouchMove, false);
+        //canvas.addEventListener('touchstart', handleTouchStart, false);
+        //canvas.addEventListener('touchmove', handleTouchMove, false);
 
         document.getElementById('controlType').addEventListener('change', function(e) {
             useAccelerometer = e.target.value === 'accelerometer';
