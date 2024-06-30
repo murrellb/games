@@ -125,6 +125,7 @@ let orientationY = 0;
 let accelerometerMultiplier = 1;
 let useAccelerometer = false;
 let accelerometerY = 0;
+let orientationData = null;
 
 // Audio context and nodes
 let audioContext;
@@ -174,10 +175,21 @@ function shortestAngleDifference(angle1, angle2) {
 }
 
 function handleOrientation(event) {
-    const downhillAngle = calculateDownhillAngle(event.beta, event.gamma);
-    const steepness = Math.sqrt(Math.pow(Math.tan(event.beta * Math.PI / 180), 2) + Math.pow(Math.tan(event.gamma * Math.PI / 180), 2));
-    snake.targetAngle = downhillAngle;
-    snake.rotationSpeed = Math.min(steepness * 0.1, 0.1); // Adjust this multiplier to control sensitivity
+    // Store the raw orientation data
+    orientationData = {
+        beta: event.beta,
+        gamma: event.gamma
+    };
+}
+
+function updateSnakeOrientation() {
+    if (orientationData) {
+        const downhillAngle = calculateDownhillAngle(orientationData.beta, orientationData.gamma);
+        const steepness = Math.sqrt(Math.pow(Math.tan(orientationData.beta * Math.PI / 180), 2) + 
+                                    Math.pow(Math.tan(orientationData.gamma * Math.PI / 180), 2));
+        snake.targetAngle = downhillAngle;
+        snake.rotationSpeed = Math.min(steepness * 0.1, 0.1) * accelerometerMultiplier; // Adjust sensitivity
+    }
 }
 
 function handleMotion(event) {
@@ -340,10 +352,13 @@ function update(deltaTime) {
 
     const gameSpeedMultiplier = 3.5; // Increase this to speed up the game overall
 
+    // Update snake's target angle and rotation speed
+    updateSnakeOrientation();
+
     // Update snake angle
     if (snake.angle !== snake.targetAngle) {
         const angleDiff = shortestAngleDifference(snake.angle, snake.targetAngle);
-        const rotationAmount = Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), snake.rotationSpeed * deltaTime);
+        const rotationAmount = Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), snake.rotationSpeed * deltaTime * gameSpeedMultiplier);
         snake.angle += rotationAmount;
         snake.angle = (snake.angle + 2 * Math.PI) % (2 * Math.PI); // Normalize angle
     }
