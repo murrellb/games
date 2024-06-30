@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0", maximum-scale=1.0, user-scalable=no">
+    <title>Panspermia - Mobile</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: black;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+
+        #gameCanvas {
+            display: none;
+            touch-action: none;
+        }
+
+        #menu {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: linear-gradient(to bottom, #000033, #000066);
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px #ffffff;
+        }
+
+        label {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        input {
+            margin-bottom: 10px;
+            width: 80%;
+            max-width: 300px;
+        }
+
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 0 10px #4CAF50;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        p {
+            font-size: 14px;
+            text-align: center;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="menu">
+        <h1>Panspermia</h1>
+        <label for="controlType">Control Type:</label>
+        <select id="controlType">
+            <option value="orientation">Orientation</option>
+            <option value="accelerometer">Accelerometer with Gravity</option>
+        </select>
+        <label for="snakeSpeed">Snake Speed: <span id="snakeSpeedValue">0.4</span></label>
+        <input type="range" id="snakeSpeed" min="0.2" max="1" step="0.01" value="0.3">
+        <label for="accelerometerMultiplier">Accelerometer Sensitivity: <span id="accelerometerMultiplierValue">15</span></label>
+        <input type="range" id="accelerometerMultiplier" min="0.1" max="40" step="0.1" value="15">
+        <label for="numAsteroids">Number of Asteroids: <span id="numAsteroidsValue">7</span></label>
+        <input type="range" id="numAsteroids" min="2" max="30" step="1" value="7">
+        <label for="numEdibles">Number of Edibles: <span id="numEdiblesValue">40</span></label>
+        <input type="range" id="numEdibles" min="5" max="200" step="1" value="40">
+        <label for="tailGrowthRate">Tail Growth Rate: <span id="tailGrowthRateValue">10</span></label>
+        <input type="range" id="tailGrowthRate" min="1" max="20" step="1" value="10">
+        <button id="startGame">Start Game</button>
+        <p>Tilt your device to control the snake. Keep the snake moving and avoid crashing into asteroids or your own tail!</p>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+
+    <script>
+        //START OF CHUNK 1
+// Constants
+const FIXED_DELTA_TIME = 1000 / 60; // 60 fps
+const MAX_SPEED = 2;
+const MINMAX_SPEED = MAX_SPEED / 3;
+const SPEED_DECAY_RATE = 0.9995;
+const BLACK_HOLE_RADIUS = 30;
+const BLACK_HOLE_SPAWN_THRESHOLD = 0.8;
+const BLACK_HOLE_MOVE_SPEED = 0.5;
+const BLACK_HOLE_PULL_RATE = 5.0;
+const ACCELEROMETER_MULTIPLIER = -5;
+
+// Game state variables
+let snake, asteroids, foodAsteroids, gameLoopId, stars;
+let turnState = 'straight';
+let currentTurnRate = 0;
+let tailLength = 0;
+let averageAsteroidVelocity = 0;
+let blackHole = null;
+let isEnteringBlackHole = false;
+let isGameOver = false;
+let animationId;
+let hasEndedGame = false;
+let lastTime = 0;
+let accumulator = 0;
+
+// Accelerometer variables
+let orientationY = 0;
+let accelerometerMultiplier = 1;
+let useAccelerometer = false;
+let accelerometerY = 0;
+
+// Audio context and nodes
+let audioContext;
+let masterGainNode;
+let musicContext;
+let backgroundMusic;
+
+// DOM elements
+const menu = document.getElementById('menu');
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const startButton = document.getElementById('startGame');
+const snakeSpeedSlider = document.getElementById('snakeSpeed');
+const accelerometerMultiplierSlider = document.getElementById('accelerometerMultiplier');
+const numAsteroidsSlider = document.getElementById('numAsteroids');
+const numEdiblesSlider = document.getElementById('numEdibles');
+const tailGrowthRateSlider = document.getElementById('tailGrowthRate');
+const snakeSpeedValue = document.getElementById('snakeSpeedValue');
+const accelerometerMultiplierValue = document.getElementById('accelerometerMultiplierValue');
+const numAsteroidsValue = document.getElementById('numAsteroidsValue');
+const numEdiblesValue = document.getElementById('numEdiblesValue');
+const tailGrowthRateValue = document.getElementById('tailGrowthRateValue');
+
+// Event listeners
+startButton.onclick = startGame;
+snakeSpeedSlider.oninput = updateSliderValues;
+accelerometerMultiplierSlider.oninput = updateSliderValues;
+numAsteroidsSlider.oninput = updateSliderValues;
+numEdiblesSlider.oninput = updateSliderValues;
+tailGrowthRateSlider.oninput = updateSliderValues;
+
+// Accelerometer event listener
+window.addEventListener('deviceorientation', handleOrientation);
+
+function calculateDownhillAngle(beta, gamma) {
+    // Convert degrees to radians
+    const betaRad = beta * Math.PI / 180;
+    const gammaRad = gamma * Math.PI / 180;
+    
+    // Calculate the downhill angle
+    return Math.atan2(-Math.sin(gammaRad), Math.sin(betaRad));
+}
+
+function shortestAngleDifference(angle1, angle2) {
+    const diff = (angle2 - angle1 + Math.PI) % (2 * Math.PI) - Math.PI;
+    return diff < -Math.PI ? diff + 2 * Math.PI : diff;
+}
+
+function handleOrientation(event) {
+    const downhillAngle = calculateDownhillAngle(event.beta, event.gamma);
+    const steepness = Math.sqrt(Math.pow(Math.tan(event.beta * Math.PI / 180), 2) + Math.pow(Math.tan(event.gamma * Math.PI / 180), 2));
+    snake.targetAngle = downhillAngle;
+    snake.rotationSpeed = Math.min(steepness * 0.1, 0.1); // Adjust this multiplier to control sensitivity
+}
+
+function handleMotion(event) {
+    if (useAccelerometer) {
+        accelerometerY = event.accelerationIncludingGravity.x * ACCELEROMETER_MULTIPLIER;
+    }
+}
+
+// Initialization functions
+function startGame() {
+
+    // Request device orientation permission explicitly
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+            .then(permissionState => {
+                if (permissionState === 'granted') {
+                    window.addEventListener('deviceorientation', handleOrientation);
+                }
+            })
+            .catch(console.error);
+    }
+
+    
+    menu.style.display = 'none';
+    canvas.style.display = 'block';
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    initAudio();
+    initMusic();
+    initializeGameState();
+    lastTime = 0;
+    accumulator = 0;
+    gameLoopId = requestAnimationFrame(gameLoop);
+}
+
+function initializeGameState() {
+    const speed = parseFloat(snakeSpeedSlider.value);
+    accelerometerMultiplier = parseFloat(accelerometerMultiplierSlider.value);
+    const tailGrowthRate = parseInt(tailGrowthRateSlider.value);
+
+    snake = {
+        x: canvas.width / 2,
+        y: canvas.height / 2,
+        vx: 0,
+        vy: -speed,
+        speed: speed,
+        radius: 10,
+        angle: 0,
+        targetAngle: 0,
+        rotationSpeed: 0,
+        segments: [],
+        maxSegments: 50,
+        tailGrowthRate: tailGrowthRate
+    };
+
+    asteroids = [];
+    foodAsteroids = [];
+
+    const numAsteroids = parseInt(numAsteroidsSlider.value);
+    const numEdibles = parseInt(numEdiblesSlider.value);
+
+    for (let i = 0; i < numAsteroids; i++) {
+        asteroids.push(createAsteroid());
+    }
+    for (let i = 0; i < numEdibles; i++) {
+        foodAsteroids.push(createAsteroid(true));
+    }
+
+    createStars();
+
+    turnState = 'straight';
+    currentTurnRate = 0;
+}
+
+function createAsteroid(isFood = false) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = isFood ? 0 : 0.1 + Math.random() * 0.1;
+    let radius;
+    if (isFood) {
+        radius = 3 + Math.random() * 5;
+    } else {
+        radius = 5 + Math.random() * 10;
+    }
+    return {
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        radius: radius,
+        color: isFood ? `hsl(${Math.random() * 360}, 100%, 50%)` : 'gray',
+        mass: isFood ? 1 : 10 + Math.random() * 90
+    };
+}
+
+function createStars() {
+    stars = [];
+    for (let i = 0; i < 200; i++) {
+        stars.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            radius: Math.random() * 1.5 + 0.5,
+            color: `rgba(255, 255, 255, ${Math.random() * 0.5 + 0.5})`,
+            velocity: Math.random() * 0.5 + 0.1,
+            pulse: Math.random() * 0.1
+        });
+    }
+}
+
+function createBlackHole() {
+    return {
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        radius: BLACK_HOLE_RADIUS,
+        angle: Math.random() * Math.PI * 2
+    };
+}
+
+function updateSliderValues() {
+    snakeSpeedValue.textContent = parseFloat(snakeSpeedSlider.value).toFixed(2);
+    accelerometerMultiplierValue.textContent = parseFloat(accelerometerMultiplierSlider.value).toFixed(2);
+    numAsteroidsValue.textContent = numAsteroidsSlider.value;
+    numEdiblesValue.textContent = numEdiblesSlider.value;
+    tailGrowthRateValue.textContent = tailGrowthRateSlider.value;
+}
+
+// Helper functions
+function distance(a, b) {
+    return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
+
+// Call updateSliderValues initially to set default values
+updateSliderValues();
+
+//END OF CHUNK 1
+//START OF CHUNK 2
+function gameLoop(currentTime) {
+    if (isGameOver) return;  // Stop the game loop if the game is over
+
+    if (lastTime === 0) {
+        lastTime = currentTime;
+    }
+    
+    let frameTime = currentTime - lastTime;
+    lastTime = currentTime;
+    
+    accumulator += frameTime;
+    
+    while (accumulator >= FIXED_DELTA_TIME) {
+        update(FIXED_DELTA_TIME / 1000); // Convert to seconds
+        accumulator -= FIXED_DELTA_TIME;
+    }
+    
+    draw();
+    gameLoopId = requestAnimationFrame(gameLoop);
+}
+
+function update(deltaTime) {
+    if (isGameOver) return;  // Don't update if the game is over
+
+    const gameSpeedMultiplier = 3.5; // Increase this to speed up the game overall
+
+    // Update snake angle
+    if (snake.angle !== snake.targetAngle) {
+        const angleDiff = shortestAngleDifference(snake.angle, snake.targetAngle);
+        const rotationAmount = Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), snake.rotationSpeed * deltaTime);
+        snake.angle += rotationAmount;
+        snake.angle = (snake.angle + 2 * Math.PI) % (2 * Math.PI); // Normalize angle
+    }
+
+    snake.vx = Math.cos(snake.angle) * snake.speed;
+    snake.vy = Math.sin(snake.angle) * snake.speed;
+
+    // Check if we need to spawn a black hole
+    if (!blackHole && averageAsteroidVelocity > BLACK_HOLE_SPAWN_THRESHOLD) {
+        blackHole = createBlackHole();
+        backgroundMusic.setBlackHoleActive(true);
+    }
+
+    // Update black hole position if it exists
+    if (blackHole) {
+        blackHole.angle += (Math.random() - 0.5) * 0.1 * deltaTime * gameSpeedMultiplier;
+        blackHole.x += Math.cos(blackHole.angle) * BLACK_HOLE_MOVE_SPEED * deltaTime * 60 * gameSpeedMultiplier;
+        blackHole.y += Math.sin(blackHole.angle) * BLACK_HOLE_MOVE_SPEED * deltaTime * 60 * gameSpeedMultiplier;
+
+        blackHole.x = (blackHole.x + canvas.width) % canvas.width;
+        blackHole.y = (blackHole.y + canvas.height) % canvas.height;
+
+        if (distance(snake, blackHole) < snake.radius + blackHole.radius) {
+            endGameWithBlackHole();
+            return;
+        }
+    }
+
+    snake.x += snake.vx * deltaTime * 60 * gameSpeedMultiplier;
+    snake.y += snake.vy * deltaTime * 60 * gameSpeedMultiplier;
+
+    snake.x = (snake.x + canvas.width) % canvas.width;
+    snake.y = (snake.y + canvas.height) % canvas.height;
+
+    tailLength = snake.segments.length;
+
+    snake.segments.unshift({ x: snake.x, y: snake.y, color: `hsl(${Date.now() * 0.1 % 360}, 100%, 50%)` });
+
+    if (snake.segments.length > snake.maxSegments) {
+        snake.segments.pop();
+    }
+
+    if (!isEnteringBlackHole) {
+        const safeDistance = Math.max(20, 40 * snake.speed);
+        let cumulativeDistance = 0;
+        for (let i = 1; i < snake.segments.length; i++) {
+            cumulativeDistance += distance(snake.segments[i - 1], snake.segments[i]);
+            if (cumulativeDistance > safeDistance && distance(snake, snake.segments[i]) < snake.radius) {
+                endGame('Game Over! You crashed into your own tail!');
+                return;
+            }
+        }
+    }
+
+    let totalVelocity = 0;
+    for (let i = 0; i < asteroids.length; i++) {
+        let asteroid = asteroids[i];
+
+        let currentSpeed = Math.sqrt(asteroid.vx * asteroid.vx + asteroid.vy * asteroid.vy);
+        if (currentSpeed > MINMAX_SPEED) {
+            let decayFactor = Math.pow(Math.max(SPEED_DECAY_RATE, MINMAX_SPEED / currentSpeed), deltaTime);
+            asteroid.vx *= decayFactor;
+            asteroid.vy *= decayFactor;
+        }
+
+        asteroid.x += asteroid.vx * deltaTime * 60 * gameSpeedMultiplier;
+        asteroid.y += asteroid.vy * deltaTime * 60 * gameSpeedMultiplier;
+
+        asteroid.x = (asteroid.x + canvas.width) % canvas.width;
+        asteroid.y = (asteroid.y + canvas.height) % canvas.height;
+
+        totalVelocity += Math.sqrt(asteroid.vx * asteroid.vx + asteroid.vy * asteroid.vy);
+
+        if (!isEnteringBlackHole && distance(snake, asteroid) < snake.radius + asteroid.radius) {
+            endGame('Game Over! You crashed into an asteroid!');
+            return;
+        }
+
+        for (let j = 1; j < snake.segments.length; j++) {
+            if (distance(asteroid, snake.segments[j]) < asteroid.radius) {
+                playCollisionSound();
+                let dx = asteroid.x - snake.segments[j].x;
+                let dy = asteroid.y - snake.segments[j].y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                dx /= dist;
+                dy /= dist;
+
+                let newVx = 1.025 * dx * Math.sqrt(asteroid.vx * asteroid.vx + asteroid.vy * asteroid.vy);
+                let newVy = 1.025 * dy * Math.sqrt(asteroid.vx * asteroid.vx + asteroid.vy * asteroid.vy);
+
+                let newSpeed = Math.sqrt(newVx * newVx + newVy * newVy);
+
+                if (newSpeed > MAX_SPEED) {
+                    let scale = MAX_SPEED / newSpeed;
+                    newVx *= scale;
+                    newVy *= scale;
+                }
+
+                asteroid.vx = newVx;
+                asteroid.vy = newVy;
+            }
+        }
+
+        for (let j = i + 1; j < asteroids.length; j++) {
+            let other = asteroids[j];
+            if (distance(asteroid, other) < asteroid.radius + other.radius) {
+                let angle = Math.atan2(other.y - asteroid.y, other.x - asteroid.x);
+                let sine = Math.sin(angle);
+                let cosine = Math.cos(angle);
+
+                let x1 = 0;
+                let y1 = 0;
+                let x2 = distance(asteroid, other);
+                let y2 = 0;
+
+                let vx1 = asteroid.vx * cosine + asteroid.vy * sine;
+                let vy1 = asteroid.vy * cosine - asteroid.vx * sine;
+                let vx2 = other.vx * cosine + other.vy * sine;
+                let vy2 = other.vy * cosine - other.vx * sine;
+
+                let vx1Final = ((asteroid.mass - other.mass) * vx1 + 2 * other.mass * vx2) / (asteroid.mass + other.mass);
+                let vx2Final = ((other.mass - asteroid.mass) * vx2 + 2 * asteroid.mass * vx1) / (asteroid.mass + other.mass);
+
+                asteroid.vx = vx1Final * cosine - vy1 * sine;
+                asteroid.vy = vy1 * cosine + vx1Final * sine;
+                other.vx = vx2Final * cosine - vy2 * sine;
+                other.vy = vy2 * cosine + vx2Final * sine;
+
+                let overlap = asteroid.radius + other.radius - distance(asteroid, other);
+                asteroid.x -= overlap / 2 * Math.cos(angle);
+                asteroid.y -= overlap / 2 * Math.sin(angle);
+                other.x += overlap / 2 * Math.cos(angle);
+                other.y += overlap / 2 * Math.sin(angle);
+            }
+        }
+    }
+    averageAsteroidVelocity = totalVelocity / asteroids.length;
+
+    for (let i = foodAsteroids.length - 1; i >= 0; i--) {
+        if (distance(snake, foodAsteroids[i]) < snake.radius + foodAsteroids[i].radius) {
+            playEatSound();
+            snake.maxSegments += 5 * snake.tailGrowthRate;
+            foodAsteroids.splice(i, 1);
+            foodAsteroids.push(createAsteroid(true));
+        }
+    }
+
+    stars.forEach(star => {
+        star.x -= star.velocity * deltaTime * 60 * gameSpeedMultiplier;
+        if (star.x < 0) {
+            star.x = canvas.width;
+            star.y = Math.random() * canvas.height;
+        }
+        star.alpha = Math.sin(Date.now() * star.pulse) * 0.5 + 0.5;
+    });
+}
+
+function endGame(message) {
+    if (isGameOver) return;  // Prevent multiple end game calls
+    isGameOver = true;
+    cancelAnimationFrame(gameLoopId);
+    backgroundMusic.stop();
+    playGameOverSound();
+    let finalMessage = `${message}\n\nFinal Scores:\nTail Length: ${tailLength}\nAverage Asteroid Velocity: ${averageAsteroidVelocity.toFixed(2)}`;
+    setTimeout(() => {
+        alert(finalMessage);
+        resetGame();
+    }, 100);  // Short delay to ensure all game loop operations have finished
+}
+
+function endGameWithBlackHole() {
+    if (isGameOver) return;  // Prevent multiple end game calls
+    isGameOver = true;
+    cancelAnimationFrame(gameLoopId);
+    isEnteringBlackHole = true;
+    backgroundMusic.stop();
+    playBlackHoleAppearSound();
+    blackHoleAnimation();
+}
+
+function blackHoleAnimation() {
+    if (!isEnteringBlackHole) return;
+
+    updateAndDrawStars();
+
+    ctx.fillStyle = 'black';
+    ctx.beginPath();
+    ctx.arc(blackHole.x, blackHole.y, blackHole.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'white';
+    for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.arc(blackHole.x, blackHole.y, blackHole.radius * (1 + i * 0.2), 0, Math.PI * 2 * ((Date.now() / 1000 + i * 0.25) % 1));
+        ctx.stroke();
+    }
+
+    let segmentsConsumed = 0;
+    for (let i = snake.segments.length - 1; i >= 0; i--) {
+        let segment = snake.segments[i];
+        let dx = blackHole.x - segment.x;
+        let dy = blackHole.y - segment.y;
+        let dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > blackHole.radius) {
+            let speed = BLACK_HOLE_PULL_RATE * (1 / dist);
+            segment.x += dx * speed;
+            segment.y += dy * speed;
+
+            ctx.fillStyle = segment.color;
+            ctx.beginPath();
+            ctx.arc(segment.x, segment.y, snake.radius * (1 - i / snake.segments.length * 0.5), 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            // Remove the segment and play sound
+            snake.segments.splice(i, 1);
+            playBlackHoleConsumptionSound();
+            segmentsConsumed++;
+        }
+    }
+
+    // Debugging information
+    ctx.fillStyle = 'white';
+    ctx.font = '16px Arial';
+    ctx.fillText(`Segments remaining: ${snake.segments.length}`, 10, 60);
+    ctx.fillText(`Segments consumed: ${segmentsConsumed}`, 10, 80);
+
+    if (snake.segments.length === 0) {
+        isEnteringBlackHole = false;
+        cancelAnimationFrame(animationId);  // Stop the animation
+        let finalMessage = `Congratulations! You've completed the level!\n\nFinal Scores:\nTail Length: ${tailLength}\nAverage Asteroid Velocity: ${averageAsteroidVelocity.toFixed(2)}`;
+        setTimeout(() => {
+            alert(finalMessage);
+            resetGame();
+        }, 100);
+    } else {
+        animationId = requestAnimationFrame(blackHoleAnimation);
+    }
+}
+
+function resetGame() {
+    cancelAnimationFrame(gameLoopId);
+    cancelAnimationFrame(animationId);
+    isGameOver = false;
+    isEnteringBlackHole = false;
+    blackHole = null;
+    averageAsteroidVelocity = 0;
+    tailLength = 0;
+    snake = null;  // We'll reinitialize this when starting a new game
+    asteroids = [];
+    foodAsteroids = [];
+    menu.style.display = 'flex';
+    canvas.style.display = 'none';
+    if (backgroundMusic) {
+        backgroundMusic.stop();
+        backgroundMusic.setBlackHoleActive(false);
+    }
+}
+//END OF CHUNK 2
+//START OF CHUNK 3
+
+//START OF CHUNK 3
+
+function draw() {
+    updateAndDrawStars();
+
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = 'white';
+    stars.forEach(star => {
+        ctx.globalAlpha = star.alpha;
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    for (let i = 0; i < snake.segments.length; i++) {
+        let segment = snake.segments[i];
+        ctx.fillStyle = segment.color;
+        ctx.beginPath();
+        ctx.arc(segment.x, segment.y, snake.radius * (1 - i / snake.segments.length * 0.5), 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    ctx.save();
+    ctx.translate(snake.x, snake.y);
+    ctx.rotate(snake.angle);
+    ctx.fillStyle = 'white';
+    ctx.beginPath();
+    ctx.arc(0, 0, snake.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    for (let asteroid of asteroids) {
+        ctx.fillStyle = asteroid.color;
+        ctx.beginPath();
+        ctx.arc(asteroid.x, asteroid.y, asteroid.radius, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    for (let food of foodAsteroids) {
+        ctx.fillStyle = food.color;
+        ctx.beginPath();
+        ctx.arc(food.x, food.y, food.radius, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    if (blackHole) {
+        ctx.fillStyle = 'black';
+        ctx.beginPath();
+        ctx.arc(blackHole.x, blackHole.y, blackHole.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = 'white';
+        for (let i = 0; i < 4; i++) {
+            ctx.beginPath();
+            ctx.arc(blackHole.x, blackHole.y, blackHole.radius * (1 + i * 0.2), 0, Math.PI * 2 * ((Date.now() / 1000 + i * 0.25) % 1));
+            ctx.stroke();
+        }
+    }
+
+    ctx.fillStyle = 'white';
+    ctx.font = '16px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Tail Length: ${tailLength}`, 10, 20);
+    ctx.fillText(`Avg Asteroid Velocity: ${averageAsteroidVelocity.toFixed(2)}`, 10, 40);
+}
+
+function updateAndDrawStars() {
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    stars.forEach(star => {
+        ctx.fillStyle = star.color;
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+        ctx.fill();
+    });
+}
+
+// Audio functions
+function initAudio() {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    masterGainNode = audioContext.createGain();
+    masterGainNode.connect(audioContext.destination);
+}
+
+function initMusic() {
+    musicContext = new (window.AudioContext || window.webkitAudioContext)();
+    backgroundMusic = new BackgroundMusic(musicContext);
+    backgroundMusic.start();
+}
+
+function playOscillator(frequency, type, duration, gainValue = 0.1) {
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+
+    gainNode.gain.setValueAtTime(gainValue, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(masterGainNode);
+
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + duration);
+}
+
+function playCollisionSound() {
+    const duration = 0.15;
+    const baseFrequency = 80;
+
+    playOscillator(baseFrequency, 'sine', duration, 0.2);
+    playOscillator(baseFrequency * 1.5, 'sine', duration * 0.75, 0.1);
+
+    const pitchDropOscillator = audioContext.createOscillator();
+    const pitchDropGain = audioContext.createGain();
+
+    pitchDropOscillator.type = 'sine';
+    pitchDropOscillator.frequency.setValueAtTime(baseFrequency * 1.2, audioContext.currentTime);
+    pitchDropOscillator.frequency.exponentialRampToValueAtTime(baseFrequency, audioContext.currentTime + duration);
+
+    pitchDropGain.gain.setValueAtTime(0.1, audioContext.currentTime);
+    pitchDropGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+
+    pitchDropOscillator.connect(pitchDropGain);
+    pitchDropGain.connect(masterGainNode);
+
+    pitchDropOscillator.start();
+    pitchDropOscillator.stop(audioContext.currentTime + duration);
+}
+
+function playEatSound() {
+    const duration = 0.1;
+    playOscillator(440, 'sine', duration, 0.1);
+    setTimeout(() => playOscillator(660, 'sine', duration, 0.1), duration * 1000);
+}
+
+function playGameOverSound() {
+    const duration = 0.3;
+    playOscillator(220, 'sawtooth', duration, 0.1);
+    setTimeout(() => playOscillator(110, 'sawtooth', duration, 0.1), duration * 1000);
+}
+
+function playBlackHoleConsumptionSound() {
+    const duration = 0.2;
+    const baseFrequency = 440;
+    playOscillator(baseFrequency, 'sine', duration, 0.2);
+    playOscillator(baseFrequency * 1.5, 'sine', duration, 0.1);
+    setTimeout(() => playOscillator(baseFrequency * 2, 'sine', duration, 0.1), duration * 500);
+}
+
+function playBlackHoleAppearSound() {
+    const duration = 1;
+    const baseFrequency = 100;
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(baseFrequency, audioContext.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(baseFrequency * 4, audioContext.currentTime + duration);
+
+    gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(masterGainNode);
+
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + duration);
+}
+
+class BackgroundMusic {
+    constructor(audioContext) {
+        this.audioContext = audioContext;
+        this.isPlaying = false;
+        this.tempo = 120;
+        this.noteLength = 60 / this.tempo;
+        this.scale = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88];
+        this.isBlackHoleActive = false;
+    }
+
+    start() {
+        if (this.isPlaying) return;
+        this.isPlaying = true;
+        this.nextNoteTime = this.audioContext.currentTime;
+        this.scheduleNote();
+    }
+
+    scheduleNote() {
+        this.playDrumSound(this.nextNoteTime, 'kick');
+        if (Math.random() < 0.25) {
+            this.playDrumSound(this.nextNoteTime + this.noteLength / 2, 'snare');
+        }
+
+        let note;
+        if (this.isBlackHoleActive) {
+            // Use a minor scale for a more ominous feel
+            const minorScale = [261.63, 293.66, 311.13, 349.23, 392.00, 415.30, 466.16];
+            note = minorScale[Math.floor(Math.random() * minorScale.length)];
+        } else {
+            note = this.scale[Math.floor(Math.random() * this.scale.length)];
+        }
+        this.playTone(note, this.nextNoteTime, this.noteLength);
+
+        this.nextNoteTime += this.noteLength;
+        if (this.isPlaying) {
+            setTimeout(() => this.scheduleNote(), (this.nextNoteTime - this.audioContext.currentTime) * 1000);
+        }
+    }
+
+    playDrumSound(time, type) {
+        const osc = this.audioContext.createOscillator();
+        const gain = this.audioContext.createGain();
+        osc.connect(gain);
+        gain.connect(this.audioContext.destination);
+
+        if (type === 'kick') {
+            osc.frequency.setValueAtTime(150, time);
+            osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.5);
+            gain.gain.setValueAtTime(1, time);
+            gain.gain.exponentialRampToValueAtTime(0.01, time + 0.5);
+        } else if (type === 'snare') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(100, time);
+            gain.gain.setValueAtTime(0.5, time);
+            gain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+        }
+
+        osc.start(time);
+        osc.stop(time + 0.5);
+    }
+
+    playTone(frequency, startTime, duration) {
+        const osc = this.audioContext.createOscillator();
+        const gain = this.audioContext.createGain();
+        osc.connect(gain);
+        gain.connect(this.audioContext.destination);
+
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(frequency, startTime);
+
+        gain.gain.setValueAtTime(0.1, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration - 0.05);
+
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+    }
+
+    setBlackHoleActive(active) {
+        this.isBlackHoleActive = active;
+        if (active) {
+            playBlackHoleAppearSound();
+        }
+    }
+
+    stop() {
+        this.isPlaying = false;
+    }
+}
+
+
+// Initialize the game when the window loads
+window.onload = function() {
+    // Function to set up event listeners and game components
+    function initializeGame() {
+        window.addEventListener('deviceorientation', handleOrientation);
+        window.addEventListener('devicemotion', handleMotion);
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        updateSliderValues();
+        
+        window.addEventListener('resize', handleResize);
+        canvas.addEventListener('touchstart', handleTouchStart, false);
+        canvas.addEventListener('touchmove', handleTouchMove, false);
+
+        document.getElementById('controlType').addEventListener('change', function(e) {
+            useAccelerometer = e.target.value === 'accelerometer';
+        });
+
+        document.addEventListener('touchstart', startAudioContext);
+        document.addEventListener('click', startAudioContext);
+    }
+
+    // Request permission for iOS 13+ devices
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+            .then(permissionState => {
+                if (permissionState === 'granted') {
+                    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                        DeviceMotionEvent.requestPermission()
+                            .then(motionPermissionState => {
+                                if (motionPermissionState === 'granted') {
+                                    initializeGame();
+                                } else {
+                                    console.error('Device motion permission denied');
+                                }
+                            })
+                            .catch(console.error);
+                    } else {
+                        initializeGame();
+                    }
+                } else {
+                    console.error('Device orientation permission denied');
+                }
+            })
+            .catch(console.error);
+    } else {
+        // For non iOS 13+ devices
+        initializeGame();
+    }
+};
+
+function handleResize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    // If the game is running, adjust game objects' positions if necessary
+    if (snake) {
+        snake.x = (snake.x / canvas.width) * window.innerWidth;
+        snake.y = (snake.y / canvas.height) * window.innerHeight;
+        // Adjust other game objects (asteroids, food) similarly if needed
+    }
+}
+
+function handleOrientation(event) {
+    orientationY = event.gamma; // Y-axis rotation
+}
+
+let touchStartX, touchStartY;
+
+function handleTouchStart(evt) {
+    const touches = evt.changedTouches;
+    touchStartX = touches[0].pageX;
+    touchStartY = touches[0].pageY;
+}
+
+function handleTouchMove(evt) {
+    evt.preventDefault();
+    const touches = evt.changedTouches;
+    const touchEndX = touches[0].pageX;
+    const touchEndY = touches[0].pageY;
+
+    // Calculate the swipe direction
+    const dx = touchEndX - touchStartX;
+    const dy = touchEndY - touchStartY;
+
+    // Update the snake's angle based on the swipe direction
+    if (Math.abs(dx) > Math.abs(dy)) {
+        // Horizontal swipe
+        snake.angle += (dx / canvas.width) * Math.PI * accelerometerMultiplier;
+    } else {
+        // Vertical swipe
+        snake.angle += (dy / canvas.height) * Math.PI * accelerometerMultiplier;
+    }
+
+    // Update touch start position for the next move
+    touchStartX = touchEndX;
+    touchStartY = touchEndY;
+}
+
+// Function to start audio context on user interaction
+function startAudioContext() {
+    if (audioContext.state === 'suspended') {
+        audioContext.resume();
+    }
+    if (musicContext.state === 'suspended') {
+        musicContext.resume();
+    }
+    document.removeEventListener('touchstart', startAudioContext);
+    document.removeEventListener('click', startAudioContext);
+}
+//END OF CHUNK 3
+
+
+    </script>
+</body>
+
+</html>
