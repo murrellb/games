@@ -181,18 +181,16 @@ function shortestAngleDifference(angle1, angle2) {
 }
 
 function handleOrientation(event) {
-    if (!snake) return; // Make sure snake exists before updating
-
     orientationBeta = event.beta;
     orientationGamma = event.gamma;
-
-    const downhillAngle = calculateDownhillAngle(event.beta, event.gamma);
-    const steepness = Math.sqrt(Math.pow(Math.tan(event.beta * Math.PI / 180), 2) + 
-                                Math.pow(Math.tan(event.gamma * Math.PI / 180), 2));
-
-    steepness = 10;
-    snake.targetAngle = downhillAngle;
-    snake.rotationSpeed = Math.min(steepness * 0.1, 0.1) * accelerometerMultiplier; // Adjust sensitivity
+    if (snake) {
+        const downhillAngle = calculateDownhillAngle(event.beta, event.gamma);
+        let steepness = Math.sqrt(Math.pow(Math.tan(event.beta * Math.PI / 180), 2) + 
+                                    Math.pow(Math.tan(event.gamma * Math.PI / 180), 2));
+        //steepness = 10; // Note: This line overwrites the calculated steepness
+        snake.targetAngle = downhillAngle;
+        snake.rotationSpeed = Math.min(steepness * 0.1, 0.1) * accelerometerMultiplier;
+    }
 }
 
 function handleMotion(event) {
