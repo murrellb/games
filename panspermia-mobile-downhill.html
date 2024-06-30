@@ -175,11 +175,14 @@ function shortestAngleDifference(angle1, angle2) {
 }
 
 function handleOrientation(event) {
-    // Store the raw orientation data
-    orientationData = {
-        beta: event.beta,
-        gamma: event.gamma
-    };
+    if (!snake) return; // Make sure snake exists before updating
+
+    const downhillAngle = calculateDownhillAngle(event.beta, event.gamma);
+    const steepness = Math.sqrt(Math.pow(Math.tan(event.beta * Math.PI / 180), 2) + 
+                                Math.pow(Math.tan(event.gamma * Math.PI / 180), 2));
+    
+    snake.targetAngle = downhillAngle;
+    snake.rotationSpeed = Math.min(steepness * 0.1, 0.1) * accelerometerMultiplier; // Adjust sensitivity
 }
 
 function updateSnakeOrientation() {
@@ -351,9 +354,6 @@ function update(deltaTime) {
     if (isGameOver) return;  // Don't update if the game is over
 
     const gameSpeedMultiplier = 3.5; // Increase this to speed up the game overall
-
-    // Update snake's target angle and rotation speed
-    updateSnakeOrientation();
 
     // Update snake angle
     if (snake.angle !== snake.targetAngle) {
