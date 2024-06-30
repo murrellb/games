@@ -125,9 +125,11 @@ let orientationY = 0;
 let accelerometerMultiplier = 1;
 let useAccelerometer = false;
 let accelerometerY = 0;
-let orientationData;
-orientationData.beta = 0.0;
-orientationData.gamma = 0.0;
+
+let orientationBeta = 0;
+let orientationGamma = 0;
+
+
 
 // Audio context and nodes
 let audioContext;
@@ -179,8 +181,8 @@ function shortestAngleDifference(angle1, angle2) {
 function handleOrientation(event) {
     if (!snake) return; // Make sure snake exists before updating
 
-    orientationData.beta = event.beta;
-    orientationData.gamma = event.gamma;
+    orientationBeta = event.beta;
+    orientationGamma = event.gamma;
 
     const downhillAngle = calculateDownhillAngle(event.beta, event.gamma);
     const steepness = Math.sqrt(Math.pow(Math.tan(event.beta * Math.PI / 180), 2) + 
@@ -686,8 +688,8 @@ function draw() {
     ctx.fillText(`Avg Asteroid Velocity: ${averageAsteroidVelocity.toFixed(2)}`, 10, 40);
     ctx.fillText(`snake.targetAngle: ${snake.targetAngle.toFixed(2)}`, 10, 60);
     ctx.fillText(`snake.rotationSpeed: ${snake.rotationSpeed.toFixed(2)}`, 10, 80);
-    ctx.fillText(`orientationData.beta: ${orientationData.beta.toFixed(2)}`, 10, 100);
-    ctx.fillText(`orientationData.gamma: ${orientationData.gamma.toFixed(2)}`, 10, 120);
+    ctx.fillText(`orientationBeta: ${orientationBeta.toFixed(2)}`, 10, 100);
+    ctx.fillText(`orientationGamma: ${orientationGamma.toFixed(2)}`, 10, 120);
 
 }
 
